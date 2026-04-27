@@ -1,9 +1,20 @@
 const { products, bills, stores, generateId } = require('../data/mockData');
 
+// ================================================================
+// EMPLOYEE CONTROLLER
+// ================================================================
+// DATA ACCESS ENFORCEMENT:
+// - All operations are scoped to req.user.storeId
+// - Employee can ONLY access data belonging to their store
+// - Backend enforces data isolation - frontend cannot bypass
+// - Products, Bills, Stock are ALL filtered by storeId
+// ================================================================
+
 // ─── Products ──────────────────────────────────────────────────────────────
 
 const getProducts = (req, res) => {
   const { storeId } = req.user;
+  // CRITICAL: Fetch ONLY products with matching storeId
   const storeProducts = products.filter((p) => p.storeId === storeId);
   res.json(storeProducts);
 };
@@ -37,7 +48,8 @@ const updateProduct = (req, res) => {
   const { id } = req.params;
   const { name, price, stock } = req.body;
 
-  const idx = products.findIndex((p) => p.id === id && p.storeId === storeId);
+  const productId = Number(id);
+  const idx = products.findIndex((p) => p.id === productId && p.storeId === storeId);
   if (idx === -1) {
     return res.status(404).json({ message: 'Product not found' });
   }
@@ -59,7 +71,8 @@ const deleteProduct = (req, res) => {
   const { storeId } = req.user;
   const { id } = req.params;
 
-  const idx = products.findIndex((p) => p.id === id && p.storeId === storeId);
+  const productId = Number(id);
+  const idx = products.findIndex((p) => p.id === productId && p.storeId === storeId);
   if (idx === -1) {
     return res.status(404).json({ message: 'Product not found' });
   }
@@ -87,7 +100,8 @@ const adjustStock = (req, res) => {
     return res.status(400).json({ message: 'quantity must be a positive number' });
   }
 
-  const product = products.find((p) => p.id === productId && p.storeId === storeId);
+  const productIdNum = Number(productId);
+  const product = products.find((p) => p.id === productIdNum && p.storeId === storeId);
   if (!product) {
     return res.status(404).json({ message: 'Product not found' });
   }
@@ -136,7 +150,8 @@ const createBill = (req, res) => {
       return res.status(400).json({ message: 'Each item must have a valid productId and quantity' });
     }
 
-    const product = products.find((p) => p.id === productId && p.storeId === storeId);
+    const productIdNum = Number(productId);
+    const product = products.find((p) => p.id === productIdNum && p.storeId === storeId);
     if (!product) {
       return res.status(404).json({ message: `Product ${productId} not found` });
     }
@@ -150,7 +165,7 @@ const createBill = (req, res) => {
     total += subtotal;
 
     billItems.push({
-      productId,
+      productId: productIdNum,
       productName: product.name,
       price: product.price,
       quantity: qty,

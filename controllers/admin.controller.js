@@ -14,8 +14,18 @@ const createStore = (req, res) => {
     return res.status(400).json({ message: 'Name, address and GST are required' });
   }
 
-  // Validate employee IDs exist
-  for (const eid of employeeIds) {
+  // ================================================================
+  // CRITICAL: Store MUST have adminId - cannot exist without Admin
+  // adminId comes from authenticated user (req.user.userId)
+  // ================================================================
+  const adminId = req.user.userId;
+  if (!adminId) {
+    return res.status(400).json({ message: 'Admin ID is required to create a store' });
+  }
+
+  // Validate employee IDs exist (convert to numbers)
+  const employeeIdsNum = employeeIds.map(eid => Number(eid));
+  for (const eid of employeeIdsNum) {
     const emp = employees.find((e) => e.id === eid);
     if (!emp) {
       return res.status(400).json({ message: `Employee ${eid} not found` });
@@ -30,13 +40,14 @@ const createStore = (req, res) => {
     phone,
     footerNote,
     logo,
-    employeeIds,
+    adminId, // MANDATORY - Store belongs to this admin
+    employeeIds: employeeIdsNum,
   };
 
   stores.push(newStore);
 
   // Update each employee's storeId
-  employeeIds.forEach((eid) => {
+  employeeIdsNum.forEach((eid) => {
     const emp = employees.find((e) => e.id === eid);
     if (emp) emp.storeId = newStore.id;
   });
@@ -48,7 +59,8 @@ const updateStore = (req, res) => {
   const { id } = req.params;
   const { name, address, gst, phone, footerNote, logo, employeeIds } = req.body;
 
-  const idx = stores.findIndex((s) => s.id === id);
+  const storeIdNum = Number(id);
+  const idx = stores.findIndex((s) => s.id === storeIdNum);
   if (idx === -1) {
     return res.status(404).json({ message: 'Store not found' });
   }
@@ -61,8 +73,9 @@ const updateStore = (req, res) => {
   if (logo !== undefined) stores[idx].logo = logo;
 
   if (employeeIds !== undefined) {
-    // Validate employee IDs
-    for (const eid of employeeIds) {
+    // Validate employee IDs (convert to numbers)
+    const employeeIdsNum = employeeIds.map(eid => Number(eid));
+    for (const eid of employeeIdsNum) {
       const emp = employees.find((e) => e.id === eid);
       if (!emp) {
         return res.status(400).json({ message: `Employee ${eid} not found` });
@@ -75,10 +88,10 @@ const updateStore = (req, res) => {
       if (emp) emp.storeId = null;
     });
 
-    stores[idx].employeeIds = employeeIds;
+    stores[idx].employeeIds = employeeIdsNum;
 
     // Assign storeId to new employees
-    employeeIds.forEach((eid) => {
+    employeeIdsNum.forEach((eid) => {
       const emp = employees.find((e) => e.id === eid);
       if (emp) emp.storeId = stores[idx].id;
     });
@@ -89,7 +102,8 @@ const updateStore = (req, res) => {
 
 const deleteStore = (req, res) => {
   const { id } = req.params;
-  const idx = stores.findIndex((s) => s.id === id);
+  const storeIdNum = Number(id);
+  const idx = stores.findIndex((s) => s.id === storeIdNum);
 
   if (idx === -1) {
     return res.status(404).json({ message: 'Store not found' });
@@ -119,16 +133,25 @@ const createEmployee = async (req, res) => {
     return res.status(400).json({ message: 'Name, username, mobile and password are required' });
   }
 
+  // ================================================================
+  // CRITICAL: Employee MUST be mapped to exactly ONE Store
+  // storeId is MANDATORY - Employee cannot exist without a store
+  // ================================================================
+  if (!storeId) {
+    return res.status(400).json({ message: 'storeId is required - Employee must be mapped to a store' });
+  }
+
+  // Convert storeId to number for comparison
+  const storeIdNum = Number(storeId);
+
   const exists = employees.find((e) => e.username === username || e.mobile === mobile);
   if (exists) {
     return res.status(409).json({ message: 'Employee with this username or mobile already exists' });
   }
 
-  if (storeId) {
-    const store = stores.find((s) => s.id === storeId);
-    if (!store) {
-      return res.status(400).json({ message: 'Store not found' });
-    }
+  const store = stores.find((s) => s.id === storeIdNum);
+  if (!store) {
+    return res.status(400).json({ message: 'Store not found' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -139,16 +162,14 @@ const createEmployee = async (req, res) => {
     mobile,
     passwordHash,
     role: 'employee',
-    storeId: storeId || null,
+    storeId: storeIdNum, // MANDATORY - Employee belongs to this store (as number)
   };
 
   employees.push(newEmployee);
 
-  if (storeId) {
-    const store = stores.find((s) => s.id === storeId);
-    if (store && !store.employeeIds.includes(newEmployee.id)) {
-      store.employeeIds.push(newEmployee.id);
-    }
+  // Add employee to store's employee list
+  if (!store.employeeIds.includes(newEmployee.id)) {
+    store.employeeIds.push(newEmployee.id);
   }
 
   const { passwordHash: _, ...safe } = newEmployee;
@@ -159,7 +180,8 @@ const updateEmployee = async (req, res) => {
   const { id } = req.params;
   const { name, username, mobile, password, storeId } = req.body;
 
-  const idx = employees.findIndex((e) => e.id === id);
+  const empIdNum = Number(id);
+  const idx = employees.findIndex((e) => e.id === empIdNum);
   if (idx === -1) {
     return res.status(404).json({ message: 'Employee not found' });
   }
@@ -169,27 +191,33 @@ const updateEmployee = async (req, res) => {
   if (mobile) employees[idx].mobile = mobile;
   if (password) employees[idx].passwordHash = await bcrypt.hash(password, 10);
 
+  // ================================================================
+  // Employee MUST always have a storeId - cannot be null
+  // ================================================================
   if (storeId !== undefined) {
+    if (!storeId) {
+      return res.status(400).json({ message: 'storeId is required - Employee must be mapped to a store' });
+    }
+
+    const storeIdNum = Number(storeId);
     const oldStoreId = employees[idx].storeId;
 
     if (oldStoreId) {
       const oldStore = stores.find((s) => s.id === oldStoreId);
       if (oldStore) {
-        oldStore.employeeIds = oldStore.employeeIds.filter((eid) => eid !== id);
+        oldStore.employeeIds = oldStore.employeeIds.filter((eid) => eid !== empIdNum);
       }
     }
 
-    if (storeId) {
-      const newStore = stores.find((s) => s.id === storeId);
-      if (!newStore) {
-        return res.status(400).json({ message: 'Store not found' });
-      }
-      if (!newStore.employeeIds.includes(id)) {
-        newStore.employeeIds.push(id);
-      }
+    const newStore = stores.find((s) => s.id === storeIdNum);
+    if (!newStore) {
+      return res.status(400).json({ message: 'Store not found' });
+    }
+    if (!newStore.employeeIds.includes(empIdNum)) {
+      newStore.employeeIds.push(empIdNum);
     }
 
-    employees[idx].storeId = storeId;
+    employees[idx].storeId = storeIdNum;
   }
 
   const { passwordHash, ...safe } = employees[idx];
@@ -198,7 +226,8 @@ const updateEmployee = async (req, res) => {
 
 const deleteEmployee = (req, res) => {
   const { id } = req.params;
-  const idx = employees.findIndex((e) => e.id === id);
+  const empIdNum = Number(id);
+  const idx = employees.findIndex((e) => e.id === empIdNum);
 
   if (idx === -1) {
     return res.status(404).json({ message: 'Employee not found' });
@@ -208,7 +237,7 @@ const deleteEmployee = (req, res) => {
   if (storeId) {
     const store = stores.find((s) => s.id === storeId);
     if (store) {
-      store.employeeIds = store.employeeIds.filter((eid) => eid !== id);
+      store.employeeIds = store.employeeIds.filter((eid) => eid !== empIdNum);
     }
   }
 

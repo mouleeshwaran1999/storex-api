@@ -37,7 +37,8 @@ const updateAdmin = async (req, res) => {
   const { id } = req.params;
   const { name, username, mobile, password } = req.body;
 
-  const idx = admins.findIndex((a) => a.id === id);
+  const adminId = Number(id);
+  const idx = admins.findIndex((a) => a.id === adminId);
   if (idx === -1) {
     return res.status(404).json({ message: 'Admin not found' });
   }
@@ -53,7 +54,8 @@ const updateAdmin = async (req, res) => {
 
 const deleteAdmin = (req, res) => {
   const { id } = req.params;
-  const idx = admins.findIndex((a) => a.id === id);
+  const adminId = Number(id);
+  const idx = admins.findIndex((a) => a.id === adminId);
 
   if (idx === -1) {
     return res.status(404).json({ message: 'Admin not found' });
