@@ -11,6 +11,7 @@ const {
   updateEmployee,
   deleteEmployee,
 } = require('../controllers/admin.controller');
+const { getStoreReportForAdmin } = require('../controllers/report.controller');
 
 router.use(authenticate, authorize('admin'));
 
@@ -18,6 +19,7 @@ router.get('/stores', getStores);
 router.post('/stores', createStore);
 router.put('/stores/:id', updateStore);
 router.delete('/stores/:id', deleteStore);
+router.get('/stores/:id/report', getStoreReportForAdmin);
 
 router.get('/employees', getEmployees);
 router.post('/employees', createEmployee);

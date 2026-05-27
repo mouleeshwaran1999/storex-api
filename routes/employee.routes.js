@@ -10,6 +10,7 @@ const {
   getBills,
   createBill,
 } = require('../controllers/employee.controller');
+const { getMyStoreReport } = require('../controllers/report.controller');
 
 router.use(authenticate, authorize('employee'));
 
@@ -22,5 +23,7 @@ router.post('/stock/adjust', adjustStock);
 
 router.get('/bills', getBills);
 router.post('/bills', createBill);
+
+router.get('/report', getMyStoreReport);
 
 module.exports = router;

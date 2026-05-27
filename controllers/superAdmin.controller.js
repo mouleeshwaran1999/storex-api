@@ -1,9 +1,11 @@
 const bcrypt = require('bcryptjs');
-const { admins, generateId } = require('../data/mockData');
+const User = require('../models/User'); // ← REPLACED: Mock data with MongoDB User model
 
-const getAdmins = (req, res) => {
-  const safeAdmins = admins.map(({ passwordHash, ...rest }) => rest);
-  res.json(safeAdmins);
+const getAdmins = async (req, res) => {
+  // ← REPLACED: Mock array with MongoDB query
+  // Exclude passwordHash for security
+  const admins = await User.find({ role: 'admin' }).select('-passwordHash');
+  res.json(admins);
 };
 
 const createAdmin = async (req, res) => {
@@ -13,23 +15,28 @@ const createAdmin = async (req, res) => {
     return res.status(400).json({ message: 'Name, username, mobile and password are required' });
   }
 
-  const exists = admins.find((a) => a.username === username || a.mobile === mobile);
+  // ← REPLACED: Mock array find with MongoDB query
+  const exists = await User.findOne({
+    $or: [{ username }, { mobile }]
+  });
   if (exists) {
     return res.status(409).json({ message: 'Admin with this username or mobile already exists' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const newAdmin = {
-    id: generateId('admin'),
+
+  // ← REPLACED: Mock object push with MongoDB create
+  const newAdmin = await User.create({
     name,
     username,
     mobile,
     passwordHash,
     role: 'admin',
-  };
+  });
 
-  admins.push(newAdmin);
-  const { passwordHash: _, ...safe } = newAdmin;
+  // Return without passwordHash
+  const safe = newAdmin.toObject();
+  delete safe.passwordHash;
   res.status(201).json(safe);
 };
 
@@ -37,31 +44,34 @@ const updateAdmin = async (req, res) => {
   const { id } = req.params;
   const { name, username, mobile, password } = req.body;
 
-  const adminId = Number(id);
-  const idx = admins.findIndex((a) => a.id === adminId);
-  if (idx === -1) {
+  // ← REPLACED: Mock array find with MongoDB query
+  const admin = await User.findOne({ _id: id, role: 'admin' });
+  if (!admin) {
     return res.status(404).json({ message: 'Admin not found' });
   }
 
-  if (name) admins[idx].name = name;
-  if (username) admins[idx].username = username;
-  if (mobile) admins[idx].mobile = mobile;
-  if (password) admins[idx].passwordHash = await bcrypt.hash(password, 10);
+  if (name) admin.name = name;
+  if (username) admin.username = username;
+  if (mobile) admin.mobile = mobile;
+  if (password) admin.passwordHash = await bcrypt.hash(password, 10);
 
-  const { passwordHash, ...safe } = admins[idx];
+  await admin.save(); // ← CHANGED: Save to MongoDB
+
+  // Return without passwordHash
+  const safe = admin.toObject();
+  delete safe.passwordHash;
   res.json(safe);
 };
 
-const deleteAdmin = (req, res) => {
+const deleteAdmin = async (req, res) => {
   const { id } = req.params;
-  const adminId = Number(id);
-  const idx = admins.findIndex((a) => a.id === adminId);
 
-  if (idx === -1) {
+  // ← REPLACED: Mock array splice with MongoDB deleteOne
+  const result = await User.deleteOne({ _id: id, role: 'admin' });
+  if (result.deletedCount === 0) {
     return res.status(404).json({ message: 'Admin not found' });
   }
 
-  admins.splice(idx, 1);
   res.json({ message: 'Admin deleted successfully' });
 };
 

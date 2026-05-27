@@ -1,6 +1,10 @@
 require('dotenv').config();
+require('express-async-errors');
 const express = require('express');
 const cors = require('cors');
+
+const connectDB = require('./config/database');
+const seedDatabase = require('./config/seed');
 
 const authRoutes = require('./routes/auth.routes');
 const superAdminRoutes = require('./routes/superAdmin.routes');
@@ -9,6 +13,19 @@ const employeeRoutes = require('./routes/employee.routes');
 const shopRoutes = require('./routes/shop.routes');
 
 const app = express();
+
+// ================================================================
+// MONGODB CONNECTION
+// ================================================================
+// Connect to MongoDB and seed database if empty
+// Server starts even if MongoDB is temporarily unavailable
+// ================================================================
+connectDB().then(() => {
+  // Seed database with default users if empty
+  seedDatabase().catch(err => {
+    console.error('Seeding error (non-fatal):', err.message);
+  });
+});
 
 // CORS configuration for production
 const corsOptions = {
@@ -31,6 +48,20 @@ app.use('/api', shopRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  if (err.name === 'CastError') {
+    return res.status(400).json({ message: `Invalid ${err.path}: ${err.value}` });
+  }
+  if (err.name === 'ValidationError') {
+    return res.status(400).json({ message: err.message });
+  }
+  if (err && err.code === 11000) {
+    // Duplicate key on a unique index — surface a friendly message
+    const field = Object.keys(err.keyValue || {})[0] || 'field';
+    const value = (err.keyValue && err.keyValue[field]) || '';
+    return res.status(409).json({
+      message: `Duplicate ${field}${value !== '' ? ` "${value}"` : ''} — must be unique`,
+    });
+  }
   res.status(500).json({ message: 'Internal server error' });
 });
 
