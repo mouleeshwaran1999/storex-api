@@ -83,14 +83,20 @@ const login = async (req, res) => {
     });
   } catch (err) {
     console.error('Login error:', err.name, err.message, err.stack);
-    if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError'
-        || err.name === 'MongooseServerSelectionError'
-        || err.message?.includes('ECONNREFUSED') || err.message?.includes('ENOTFOUND')
-        || err.message?.includes('querySrv') || err.message?.includes('getaddrinfo')) {
+    if (
+      err.name === 'MongoNetworkError' ||
+      err.name === 'MongoServerSelectionError' ||
+      err.name === 'MongooseServerSelectionError' ||
+      err.name === 'MongooseError' ||
+      err.message?.includes('buffering timed out') ||
+      err.message?.includes('ECONNREFUSED') ||
+      err.message?.includes('ENOTFOUND') ||
+      err.message?.includes('querySrv') ||
+      err.message?.includes('getaddrinfo')
+    ) {
       return res.status(503).json({ message: 'Database unavailable. Please try again shortly.' });
     }
-    // Temporary: expose error detail for debugging — remove after fix
-    return res.status(500).json({ message: 'Login failed.', detail: `${err.name}: ${err.message}` });
+    return res.status(500).json({ message: 'Login failed. Please try again.' });
   }
 };
 
