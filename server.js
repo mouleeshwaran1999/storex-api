@@ -47,12 +47,16 @@ app.use('/api', employeeRoutes);
 app.use('/api', shopRoutes);
 
 app.use((err, req, res, next) => {
+  console.error('[ERROR]', req.method, req.path, err.message);
   console.error(err.stack);
   if (err.name === 'CastError') {
     return res.status(400).json({ message: `Invalid ${err.path}: ${err.value}` });
   }
   if (err.name === 'ValidationError') {
     return res.status(400).json({ message: err.message });
+  }
+  if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError') {
+    return res.status(503).json({ message: 'Database unavailable. Please try again shortly.' });
   }
   if (err && err.code === 11000) {
     // Duplicate key on a unique index — surface a friendly message

@@ -21,60 +21,73 @@ const login = async (req, res) => {
     return res.status(400).json({ message: 'Username/mobile and password are required' });
   }
 
-  // Match by username (case-insensitive) OR mobile number across all roles
-  const trimmed = String(identifier).trim();
-  const user = await User.findOne({
-    $or: [
-      { username: trimmed.toLowerCase() },
-      { mobile: trimmed }
-    ]
-  });
-
-  if (!user) {
-    return res.status(401).json({ message: 'Invalid credentials' });
-  }
-
-  const isMatch = await bcrypt.compare(password, user.passwordHash);
-  if (!isMatch) {
-    return res.status(401).json({ message: 'Invalid credentials' });
-  }
-
-  // Employees must be assigned to a store before they can sign in
-  if (user.role === 'employee' && !user.storeId) {
-    return res.status(403).json({
-      message: 'Employee must be assigned to a store. Please contact your administrator.',
+  try {
+    // Match by username (case-insensitive) OR mobile number across all roles
+    const trimmed = String(identifier).trim();
+    const user = await User.findOne({
+      $or: [
+        { username: trimmed.toLowerCase() },
+        { mobile: trimmed }
+      ]
     });
-  }
 
-  // Build JWT payload with userId, role, storeId, and permissions (for employees)
-  const payload = {
-    userId: user._id.toString(),
-    role: user.role,
-    ...(user.storeId && { storeId: user.storeId.toString() }),
-    ...(user.role === 'employee' && {
-      permissions: user.permissions,
-      ...(user.adminId && { adminId: user.adminId.toString() }),
-    }),
-  };
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-  const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
+    const isMatch = await bcrypt.compare(password, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Invalid credentials' });
+    }
 
-  return res.json({
-    token,
-    user: {
-      id: user._id.toString(),
-      name: user.name,
-      username: user.username,
-      mobile: user.mobile,
+    // Employees must be assigned to a store before they can sign in
+    if (user.role === 'employee' && !user.storeId) {
+      return res.status(403).json({
+        message: 'Employee must be assigned to a store. Please contact your administrator.',
+      });
+    }
+
+    if (!process.env.JWT_SECRET) {
+      console.error('FATAL: JWT_SECRET environment variable is not set');
+      return res.status(500).json({ message: 'Server configuration error. Contact administrator.' });
+    }
+
+    // Build JWT payload with userId, role, storeId, and permissions (for employees)
+    const payload = {
+      userId: user._id.toString(),
       role: user.role,
-      profilePhoto: user.profilePhoto || null,
       ...(user.storeId && { storeId: user.storeId.toString() }),
       ...(user.role === 'employee' && {
         permissions: user.permissions,
         ...(user.adminId && { adminId: user.adminId.toString() }),
       }),
-    },
-  });
+    };
+
+    const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
+
+    return res.json({
+      token,
+      user: {
+        id: user._id.toString(),
+        name: user.name,
+        username: user.username,
+        mobile: user.mobile,
+        role: user.role,
+        profilePhoto: user.profilePhoto || null,
+        ...(user.storeId && { storeId: user.storeId.toString() }),
+        ...(user.role === 'employee' && {
+          permissions: user.permissions,
+          ...(user.adminId && { adminId: user.adminId.toString() }),
+        }),
+      },
+    });
+  } catch (err) {
+    console.error('Login error:', err.message, err.stack);
+    if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError' || err.message?.includes('ECONNREFUSED')) {
+      return res.status(503).json({ message: 'Database unavailable. Please try again shortly.' });
+    }
+    return res.status(500).json({ message: 'Login failed. Please try again.' });
+  }
 };
 
 // ================================================================
