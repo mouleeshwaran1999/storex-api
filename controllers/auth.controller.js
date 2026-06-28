@@ -82,11 +82,15 @@ const login = async (req, res) => {
       },
     });
   } catch (err) {
-    console.error('Login error:', err.message, err.stack);
-    if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError' || err.message?.includes('ECONNREFUSED')) {
+    console.error('Login error:', err.name, err.message, err.stack);
+    if (err.name === 'MongoNetworkError' || err.name === 'MongoServerSelectionError'
+        || err.name === 'MongooseServerSelectionError'
+        || err.message?.includes('ECONNREFUSED') || err.message?.includes('ENOTFOUND')
+        || err.message?.includes('querySrv') || err.message?.includes('getaddrinfo')) {
       return res.status(503).json({ message: 'Database unavailable. Please try again shortly.' });
     }
-    return res.status(500).json({ message: 'Login failed. Please try again.' });
+    // Temporary: expose error detail for debugging — remove after fix
+    return res.status(500).json({ message: 'Login failed.', detail: `${err.name}: ${err.message}` });
   }
 };
 
