@@ -39,6 +39,8 @@ const billSchema = new mongoose.Schema(
 
     customerName: { type: String, required: true, trim: true },
     customerMobile: { type: String, default: '', trim: true },
+    // Linked customer record (null for walk-in)
+    customerId: { type: Number, ref: 'Customer', default: null },
 
     items: { type: [billItemSchema], required: true, validate: v => v.length > 0 },
 
@@ -48,9 +50,11 @@ const billSchema = new mongoose.Schema(
 
     paymentMode: {
       type: String,
-      enum: ['cash', 'card', 'upi', 'other'],
+      enum: ['cash', 'card', 'upi', 'other', 'credit'],
       default: 'cash',
     },
+    // false = bill saved as credit/outstanding, not yet collected
+    paid: { type: Boolean, default: true },
     createdBy: { type: Number, ref: 'User', required: true },
   },
   {
@@ -77,5 +81,7 @@ billSchema.pre('validate', async function () {
 
 billSchema.index({ storeId: 1, createdAt: -1 });
 billSchema.index({ createdBy: 1 });
+billSchema.index({ customerId: 1 });
+billSchema.index({ storeId: 1, paid: 1 });
 
 module.exports = mongoose.model('Bill', billSchema);

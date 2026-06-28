@@ -2,8 +2,14 @@ const bcrypt = require('bcryptjs');
 const User = require('../models/User'); // ← REPLACED: Mock data with MongoDB User model
 
 const getAdmins = async (req, res) => {
-  // ← REPLACED: Mock array with MongoDB query
-  // Exclude passwordHash for security
+  const { page, limit } = req.query;
+  if (page !== undefined) {
+    const p = Math.max(1, Number(page) || 1);
+    const l = Math.min(100, Math.max(1, Number(limit) || 25));
+    const total = await User.countDocuments({ role: 'admin' });
+    const data  = await User.find({ role: 'admin' }).select('-passwordHash').skip((p - 1) * l).limit(l);
+    return res.json({ data, total, page: p, pages: Math.ceil(total / l), limit: l });
+  }
   const admins = await User.find({ role: 'admin' }).select('-passwordHash');
   res.json(admins);
 };

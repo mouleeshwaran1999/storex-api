@@ -19,8 +19,39 @@ const adminId = (req) => Number(req.user.userId);
 // ─── Stores ────────────────────────────────────────────────────────────────
 
 const getStores = async (req, res) => {
-  const stores = await Store.find({ adminId: adminId(req) });
-  res.json(stores);
+  const owner = adminId(req);
+  const { page, limit } = req.query;
+
+  const attachEmployeeIds = async (stores) => {
+    const storeIds = stores.map((s) => s._id);
+    const assigned = await User.find(
+      { storeId: { $in: storeIds }, role: 'employee' },
+      '_id storeId'
+    );
+    const empMap = {};
+    for (const e of assigned) {
+      if (!empMap[e.storeId]) empMap[e.storeId] = [];
+      empMap[e.storeId].push(e._id);
+    }
+    return stores.map((s) => {
+      const obj = s.toJSON();
+      obj.employeeIds = empMap[s._id] || [];
+      return obj;
+    });
+  };
+
+  if (page !== undefined) {
+    const p = Math.max(1, Number(page) || 1);
+    const l = Math.min(100, Math.max(1, Number(limit) || 25));
+    const total = await Store.countDocuments({ adminId: owner });
+    const stores = await Store.find({ adminId: owner }).skip((p - 1) * l).limit(l);
+    const data = await attachEmployeeIds(stores);
+    return res.json({ data, total, page: p, pages: Math.ceil(total / l), limit: l });
+  }
+
+  const stores = await Store.find({ adminId: owner });
+  const result = await attachEmployeeIds(stores);
+  res.json(result);
 };
 
 const createStore = async (req, res) => {
@@ -76,7 +107,9 @@ const updateStore = async (req, res) => {
   if (gst) store.gstNumber = gst;
   if (phone !== undefined) store.phone = phone;
   if (footerNote !== undefined) store.footerNote = footerNote;
-  if (logo !== undefined) store.logoUrl = logo;
+  // Only overwrite logo if a real value (base64/URL) is provided.
+  // Sending null/undefined means "keep existing logo".
+  if (logo) store.logoUrl = logo;
 
   if (employeeIds !== undefined) {
     // Verify all employeeIds belong to this admin
@@ -129,21 +162,31 @@ const deleteStore = async (req, res) => {
 // ─── Employees ─────────────────────────────────────────────────────────────
 
 const getEmployees = async (req, res) => {
+  const owner = adminId(req);
+  const { page, limit } = req.query;
+  if (page !== undefined) {
+    const p = Math.max(1, Number(page) || 1);
+    const l = Math.min(100, Math.max(1, Number(limit) || 25));
+    const total = await User.countDocuments({ role: 'employee', adminId: owner });
+    const data  = await User.find({ role: 'employee', adminId: owner })
+      .select('-passwordHash').skip((p - 1) * l).limit(l);
+    return res.json({ data, total, page: p, pages: Math.ceil(total / l), limit: l });
+  }
   const employees = await User
-    .find({ role: 'employee', adminId: adminId(req) })
+    .find({ role: 'employee', adminId: owner })
     .select('-passwordHash');
   res.json(employees);
 };
 
 const createEmployee = async (req, res) => {
-  const { name, username, mobile, password, storeId } = req.body;
+  const { name, username, mobile, password, storeId, permissions } = req.body;
   const owner = adminId(req);
 
   if (!name || !username || !mobile || !password) {
     return res.status(400).json({ message: 'Name, username, mobile and password are required' });
   }
   if (!storeId) {
-    return res.status(400).json({ message: 'storeId is required - Employee must be mapped to a store' });
+    return res.status(400).json({ message: 'store is required - Employee must be mapped to a store' });
   }
 
   // Store must belong to this admin
@@ -158,14 +201,19 @@ const createEmployee = async (req, res) => {
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
+
+  // Merge supplied permissions over the defaults (all true)
+  const resolvedPermissions = {
+    products: true, stock: true, billing: true, report: true, customers: true,
+    ...(permissions || {}),
+  };
+
   const newEmployee = await User.create({
-    name,
-    username,
-    mobile,
-    passwordHash,
+    name, username, mobile, passwordHash,
     role: 'employee',
     storeId,
     adminId: owner,
+    permissions: resolvedPermissions,
   });
 
   const safe = newEmployee.toObject();
@@ -176,7 +224,7 @@ const createEmployee = async (req, res) => {
 const updateEmployee = async (req, res) => {
   const { id } = req.params;
   const owner = adminId(req);
-  const { name, username, mobile, password, storeId } = req.body;
+  const { name, username, mobile, password, storeId, permissions } = req.body;
 
   const employee = await User.findOne({ _id: id, role: 'employee', adminId: owner });
   if (!employee) return res.status(404).json({ message: 'Employee not found' });
@@ -188,13 +236,22 @@ const updateEmployee = async (req, res) => {
 
   if (storeId !== undefined) {
     if (!storeId) {
-      return res.status(400).json({ message: 'storeId is required - Employee must be mapped to a store' });
+      return res.status(400).json({ message: 'store is required - Employee must be mapped to a store' });
     }
     const newStore = await Store.findOne({ _id: storeId, adminId: owner });
     if (!newStore) {
       return res.status(400).json({ message: 'Store not found or does not belong to you' });
     }
     employee.storeId = storeId;
+  }
+
+  // Update only the permission keys that were explicitly sent
+  if (permissions && typeof permissions === 'object') {
+    for (const key of ['products', 'stock', 'billing', 'report', 'customers']) {
+      if (key in permissions) {
+        employee.permissions[key] = Boolean(permissions[key]);
+      }
+    }
   }
 
   await employee.save();

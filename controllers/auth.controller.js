@@ -46,11 +46,15 @@ const login = async (req, res) => {
     });
   }
 
-  // Build JWT payload with userId, role, and storeId (for employees)
+  // Build JWT payload with userId, role, storeId, and permissions (for employees)
   const payload = {
-    userId: user._id.toString(), // ← CHANGED: Use MongoDB _id
+    userId: user._id.toString(),
     role: user.role,
-    ...(user.storeId && { storeId: user.storeId.toString() }), // ← CHANGED: Convert ObjectId to string
+    ...(user.storeId && { storeId: user.storeId.toString() }),
+    ...(user.role === 'employee' && {
+      permissions: user.permissions,
+      ...(user.adminId && { adminId: user.adminId.toString() }),
+    }),
   };
 
   const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '8h' });
@@ -58,12 +62,17 @@ const login = async (req, res) => {
   return res.json({
     token,
     user: {
-      id: user._id.toString(), // ← CHANGED: Use MongoDB _id
+      id: user._id.toString(),
       name: user.name,
       username: user.username,
       mobile: user.mobile,
       role: user.role,
-      ...(user.storeId && { storeId: user.storeId.toString() }), // ← CHANGED: Convert ObjectId to string
+      profilePhoto: user.profilePhoto || null,
+      ...(user.storeId && { storeId: user.storeId.toString() }),
+      ...(user.role === 'employee' && {
+        permissions: user.permissions,
+        ...(user.adminId && { adminId: user.adminId.toString() }),
+      }),
     },
   });
 };
@@ -102,9 +111,37 @@ const changePassword = async (req, res) => {
 
   // Update password
   user.passwordHash = await bcrypt.hash(newPassword, 10);
-  await user.save(); // ← CHANGED: Save to MongoDB instead of in-memory update
+  await user.save();
 
   return res.json({ message: 'Password changed successfully' });
 };
 
-module.exports = { login, changePassword };
+// ================================================================
+// UPDATE PROFILE  (name, mobile, profilePhoto)
+// ================================================================
+const updateProfile = async (req, res) => {
+  const { userId } = req.user;
+  const { name, mobile, profilePhoto } = req.body;
+
+  const user = await User.findById(userId);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+
+  if (name && name.trim()) {
+    const dup = await User.findOne({ name: name.trim(), _id: { $ne: Number(userId) } });
+    if (dup) return res.status(409).json({ message: 'This name is already in use' });
+    user.name = name.trim();
+  }
+
+  if (mobile && mobile.trim()) {
+    const dup = await User.findOne({ mobile: mobile.trim(), _id: { $ne: Number(userId) } });
+    if (dup) return res.status(409).json({ message: 'This mobile number is already in use' });
+    user.mobile = mobile.trim();
+  }
+
+  if (profilePhoto !== undefined) user.profilePhoto = profilePhoto;
+
+  await user.save();
+  res.json(user);
+};
+
+module.exports = { login, changePassword, updateProfile };

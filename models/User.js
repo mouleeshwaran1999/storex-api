@@ -40,6 +40,16 @@ const userSchema = new mongoose.Schema(
       ref: 'User',
       default: null,
     },
+    profilePhoto: { type: String, default: null },
+    // Tab-level permissions — only meaningful for employees.
+    // All tabs enabled by default; admin can restrict during create/edit.
+    permissions: {
+      products:  { type: Boolean, default: true },
+      stock:     { type: Boolean, default: true },
+      billing:   { type: Boolean, default: true },
+      report:    { type: Boolean, default: true },
+      customers: { type: Boolean, default: true },
+    },
   },
   {
     timestamps: true,

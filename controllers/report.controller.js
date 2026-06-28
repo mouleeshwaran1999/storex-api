@@ -88,6 +88,10 @@ const buildStoreReport = async (storeId, range = {}) => {
     createdAt: b.createdAt,
   }));
 
+  // ─── Outstanding (unpaid) bills ──────────────────────────────
+  const unpaidBills = await Bill.find({ storeId, paid: false }).sort({ createdAt: -1 });
+  const totalOutstanding = unpaidBills.reduce((s, b) => s + (b.total || 0), 0);
+
   return {
     store: {
       id: store._id,
@@ -108,6 +112,8 @@ const buildStoreReport = async (storeId, range = {}) => {
       productCount: products.length,
       lowStockCount: lowStock.length,
       stockValue: +stockValue.toFixed(2),
+      unpaidBillsCount: unpaidBills.length,
+      totalOutstanding: +totalOutstanding.toFixed(2),
     },
     stock: products.map(p => ({
       id: p._id,
@@ -125,6 +131,14 @@ const buildStoreReport = async (storeId, range = {}) => {
     })),
     topProducts,
     recentBills,
+    unpaidBills: unpaidBills.slice(0, 50).map(b => ({
+      id: b._id,
+      customerName: b.customerName,
+      customerId: b.customerId,
+      items: (b.items || []).length,
+      total: b.total,
+      createdAt: b.createdAt,
+    })),
     generatedAt: new Date(),
   };
 };
