@@ -40,6 +40,18 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // Health check endpoint for deployment platforms
 app.get('/health', (req, res) => res.status(200).json({ status: 'OK' }));
 
+// Temporary diagnostics endpoint — remove after fixing production issues
+app.get('/api/debug-env', (req, res) => {
+  const mongoose = require('mongoose');
+  res.json({
+    MONGO_URI_set: !!process.env.MONGO_URI,
+    MONGO_URI_prefix: process.env.MONGO_URI ? process.env.MONGO_URI.slice(0, 30) + '…' : null,
+    JWT_SECRET_set: !!process.env.JWT_SECRET,
+    NODE_ENV: process.env.NODE_ENV || 'not set',
+    mongoose_state: ['disconnected','connected','connecting','disconnecting'][mongoose.connection.readyState] || 'unknown',
+  });
+});
+
 app.use('/api/auth', authRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 app.use('/api/admin', adminRoutes);
